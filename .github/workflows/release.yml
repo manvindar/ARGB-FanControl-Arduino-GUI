@@ -20,9 +20,9 @@ jobs:
         os: [ubuntu-latest, windows-latest]
         include:
           - os: ubuntu-latest
-            artifact_name: FanControl_GUI_Linux
+            output_name: FanControl_GUI_Linux
           - os: windows-latest
-            artifact_name: FanControl_GUI_Windows
+            output_name: FanControl_GUI.exe
 
     steps:
       - name: Checkout Repository
@@ -38,7 +38,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-tk zip
+          sudo apt-get install -y python3-tk
 
       - name: Install Python Dependencies
         run: |
@@ -56,39 +56,32 @@ jobs:
             pyinstaller --onefile --windowed --name="FanControl_GUI" --icon=app.ico FanControl_GUI.py
           fi
 
-      - name: Prepare Release Package (Linux)
+      - name: Prepare Binary (Linux)
         if: matrix.os == 'ubuntu-latest'
         shell: bash
         run: |
-          mkdir -p release
           if [ -f dist/FanControl_GUI ]; then
-            cp dist/FanControl_GUI release/
+            mv dist/FanControl_GUI ./${{ matrix.output_name }}
           elif [ -f dist/FanControl_GUI/FanControl_GUI ]; then
-            cp dist/FanControl_GUI/FanControl_GUI release/
+            mv dist/FanControl_GUI/FanControl_GUI ./${{ matrix.output_name }}
           fi
-          [ -f GUI_README.md ] && cp GUI_README.md release/README.md
-          [ -f fan_presets.json ] && cp fan_presets.json release/
-          zip -j ${{ matrix.artifact_name }}.zip release/*
+          chmod +x ./${{ matrix.output_name }}
 
-      - name: Prepare Release Package (Windows)
+      - name: Prepare Binary (Windows)
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path release
           if (Test-Path "dist/FanControl_GUI.exe") {
-            Copy-Item "dist/FanControl_GUI.exe" -Destination "release/"
+            Move-Item "dist/FanControl_GUI.exe" -Destination "./${{ matrix.output_name }}"
           } elseif (Test-Path "dist/FanControl_GUI/FanControl_GUI.exe") {
-            Copy-Item "dist/FanControl_GUI/FanControl_GUI.exe" -Destination "release/"
+            Move-Item "dist/FanControl_GUI/FanControl_GUI.exe" -Destination "./${{ matrix.output_name }}"
           }
-          if (Test-Path "GUI_README.md") { Copy-Item "GUI_README.md" -Destination "release/README.md" }
-          if (Test-Path "fan_presets.json") { Copy-Item "fan_presets.json" -Destination "release/" }
-          Compress-Archive -Path "release/*" -DestinationPath "${{ matrix.artifact_name }}.zip"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact_name }}
-          path: ${{ matrix.artifact_name }}.zip
+          name: ${{ matrix.output_name }}
+          path: ${{ matrix.output_name }}
 
   release:
     name: Create GitHub Release
@@ -116,10 +109,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.release_info.outputs.tag_name }}
-          name: ${{ steps.release_info.outputs.release_info }}
+          name: ${{ steps.release_info.outputs.release_name }}
           files: |
-            artifacts/FanControl_GUI_Linux.zip
-            artifacts/FanControl_GUI_Windows.zip
+            artifacts/FanControl_GUI.exe
+            artifacts/FanControl_GUI_Linux
           draft: false
           prerelease: ${{ github.ref_type != 'tag' }}
           generate_release_notes: true
