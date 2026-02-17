@@ -15,6 +15,7 @@ import json
 import os
 from datetime import datetime
 from collections import deque
+from typing import Optional, List, Dict, Any, Deque, Tuple
 
 class FanControlGUI:
     def __init__(self, root):
@@ -72,10 +73,55 @@ class FanControlGUI:
         self.tipsy_sync_value = 128
         self.bind_tipsy_var = tk.BooleanVar(value=False)
         
-        # Pin configuration
+        # Core Pin configuration
         self.config_file = os.path.join(os.path.dirname(__file__), "arduino_config.json")
-        self.led_pin = 6  # Default pin
-        self.num_leds = 12  # Default LED count
+        self.led_pin: int = 6
+        self.num_leds: int = 12
+
+        # UI State Variables
+        self.port_var = tk.StringVar()
+        self.baud_var = tk.StringVar(value="9600")
+        self.preset_name_var = tk.StringVar()
+        self.macro_name_var = tk.StringVar()
+        self.pin_var = tk.StringVar()
+        self.led_count_var = tk.StringVar()
+        self.bind_tipsy_var = tk.BooleanVar(value=False)
+        self.auto_update_var = tk.BooleanVar(value=True)
+
+        # UI Element References (Use Any to bypass strict NoneType checking in some lint environments)
+        self.status_label: Any = None
+        self.info_label: Any = None
+        self.history_text: Any = None
+        self.port_combo: Any = None
+        self.connect_btn: Any = None
+        self.graph_canvas: Any = None
+        self.brightness_slider: Any = None
+        self.brightness_label: Any = None
+        self.speed_slider: Any = None
+        self.speed_label: Any = None
+        self.intensity_slider: Any = None
+        self.intensity_label: Any = None
+        self.saturation_slider: Any = None
+        self.saturation_label: Any = None
+        self.hue_rotation_slider: Any = None
+        self.hue_rotation_label: Any = None
+        self.tipsy_slider: Any = None
+        self.color_canvas: Any = None
+        self.rgb_label: Any = None
+        self.macro_combo: Any = None
+        self.preset_combo: Any = None
+        self.commands_text: Any = None
+        self.record_btn: Any = None
+        self.scroll_frame: Any = None
+        self.current_brightness_label: Any = None
+        self.min_brightness_label: Any = None
+        self.max_brightness_label: Any = None
+        self.avg_brightness_label: Any = None
+        self.samples_label: Any = None
+        self.display_pin_label: Any = None
+        self.display_led_count_label: Any = None
+        self.monitoring_status: Any = None
+        self.code_snippet_text: Any = None
         
         self.load_presets()
         self.load_macros()
@@ -87,271 +133,220 @@ class FanControlGUI:
         self.detect_ports()
         
     def setup_ui(self):
-        # Create notebook (tabs) for organized interface
-        notebook = ttk.Notebook(self.root)
-        notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        # Create persistent status info first (used by various tabs/handlers)
+        top_status = ttk.Frame(self.root)
+        top_status.pack(fill=tk.X, padx=10, pady=5)
         
-        # Tab 1: Quick Control
-        quick_tab = ttk.Frame(notebook)
-        notebook.add(quick_tab, text="Quick Control")
-        self.setup_quick_tab(quick_tab)
-        
-        # Tab 2: Sliders & Custom Colors
-        advanced_tab = ttk.Frame(notebook)
-        notebook.add(advanced_tab, text="Sliders & Colors")
-        self.setup_advanced_tab(advanced_tab)
-        
-        # Tab 3: Presets & Macros
-        preset_tab = ttk.Frame(notebook)
-        notebook.add(preset_tab, text="Presets & Macros")
-        self.setup_preset_tab(preset_tab)
-        
-        # Tab 4: Status & Favorites
-        status_tab = ttk.Frame(notebook)
-        notebook.add(status_tab, text="Status & Favorites")
-        self.setup_status_tab(status_tab)
-        
-        # Tab 5: PWM Graph & Monitoring
-        graph_tab = ttk.Frame(notebook)
-        notebook.add(graph_tab, text="PWM Graph")
-        self.setup_graph_tab(graph_tab)
-        
-        # Tab 6: Settings & Configuration
-        settings_tab = ttk.Frame(notebook)
-        notebook.add(settings_tab, text="Settings")
-        self.setup_settings_tab(settings_tab)
-        
-        # Bottom status bar
-        status_frame = ttk.Frame(self.root)
-        status_frame.pack(fill=tk.X, padx=10, pady=5)
-        
-        self.status_label = ttk.Label(status_frame, text="Status: Disconnected", foreground="red")
+        self.status_label = ttk.Label(top_status, text="Status: Disconnected", foreground="red", font=("Arial", 10, "bold"))
         self.status_label.pack(side=tk.LEFT, padx=10)
         
-        self.info_label = ttk.Label(status_frame, text="")
+        self.info_label = ttk.Label(top_status, text="Effect: Rainbow | Color: Red", font=("Arial", 10))
         self.info_label.pack(side=tk.LEFT, padx=10)
 
-        # ===== Persistent Command History (bottom, visible across tabs) =====
-        history_frame = ttk.LabelFrame(self.root, text="Command History", padding="5")
-        history_frame.pack(fill=tk.BOTH, side=tk.BOTTOM, padx=10, pady=5)
-        self.history_text = scrolledtext.ScrolledText(history_frame, height=10, width=120, state=tk.DISABLED)
+        # 1. Main Vertical Split (Notebook vs History)
+        # This allows the user to dynamically resize the console area.
+        main_v_pane = ttk.PanedWindow(self.root, orient=tk.VERTICAL)
+        main_v_pane.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+
+        # 2. Main Tabbed Notebook
+        notebook = ttk.Notebook(main_v_pane)
+        main_v_pane.add(notebook, weight=4)
+        
+        # Tab 1: Dashboard (Everything in one)
+        dashboard_tab = ttk.Frame(notebook)
+        notebook.add(dashboard_tab, text="🎮 Dashboard")
+        self.setup_quick_tab(dashboard_tab)
+        
+        # Tab 2: Presets & Macros
+        preset_tab = ttk.Frame(notebook)
+        notebook.add(preset_tab, text="💾 Presets & Macros")
+        self.setup_preset_tab(preset_tab)
+        
+        # Tab 3: Configuration
+        settings_tab = ttk.Frame(notebook)
+        notebook.add(settings_tab, text="⚙ Settings")
+        self.setup_settings_tab(settings_tab)
+        
+        # 3. Bottom Persistent Command History
+        history_frame = ttk.LabelFrame(main_v_pane, text="📜 Command History", padding="5")
+        main_v_pane.add(history_frame, weight=1)
+        
+        self.history_text = scrolledtext.ScrolledText(history_frame, height=8, width=120, state=tk.DISABLED, font=("Consolas", 9))
         self.history_text.pack(fill=tk.BOTH, expand=True)
     
     def setup_quick_tab(self, parent):
-        parent_frame = ttk.Frame(parent, padding="10")
-        parent_frame.pack(fill=tk.BOTH, expand=True)
+        # Main container with a pane for layout
+        main_pane = ttk.PanedWindow(parent, orient=tk.HORIZONTAL)
+        main_pane.pack(fill=tk.BOTH, expand=True)
+
+        # ===== LEFT COLUMN: ALL CONTROLS (Scrollable) =====
+        left_container = ttk.Frame(main_pane)
+        main_pane.add(left_container, weight=1)
+
+        # Add a scrollable area for the controls
+        canvas = tk.Canvas(left_container, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(left_container, orient="vertical", command=canvas.yview)
+        scroll_frame = ttk.Frame(canvas)
+
+        # Add dynamic binding to sync scroll_frame width with the canvas
+        canvas_window = canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
         
-        # ===== CONNECTION SECTION =====
-        conn_frame = ttk.LabelFrame(parent_frame, text="Connection", padding="10")
-        conn_frame.pack(fill=tk.X, pady=5)
+        def _on_canvas_configure(event):
+            # Sync the inner frame width to the canvas width
+            canvas.itemconfig(canvas_window, width=event.width)
+            
+        canvas.bind("<Configure>", _on_canvas_configure)
         
-        ttk.Label(conn_frame, text="COM Port:").pack(side=tk.LEFT, padx=5)
-        self.port_var = tk.StringVar()
-        self.port_combo = ttk.Combobox(conn_frame, textvariable=self.port_var, width=12, state="readonly")
-        self.port_combo.pack(side=tk.LEFT, padx=5)
-        
-        ttk.Label(conn_frame, text="Baud:").pack(side=tk.LEFT, padx=5)
-        self.baud_var = tk.StringVar(value="9600")
-        ttk.Combobox(conn_frame, textvariable=self.baud_var, values=["9600", "115200"], width=8, state="readonly").pack(side=tk.LEFT, padx=5)
-        
-        self.connect_btn = ttk.Button(conn_frame, text="Connect", command=self.connect_port, width=12)
-        self.connect_btn.pack(side=tk.LEFT, padx=5)
-        
-        ttk.Button(conn_frame, text="Refresh Ports", command=self.detect_ports, width=12).pack(side=tk.LEFT, padx=5)
-        
-        # ===== COLORS SECTION =====
-        color_frame = ttk.LabelFrame(parent_frame, text="Colors", padding="10")
-        color_frame.pack(fill=tk.X, pady=5)
-        
-        colors = [("Red", "1"), ("Green", "2"), ("Blue", "3"), ("White", "4"), 
-                  ("Cyan", "5"), ("Magenta", "6"), ("Yellow", "7"), ("Orange", "8"),
-                  ("Pink", "9"), ("Purple", "0")]
-        
+        scroll_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        # Compact padding for internal frames
+        p = {"fill": tk.X, "pady": 3, "padx": 5}
+
+        # 1. CONNECTION
+        conn_frame = ttk.LabelFrame(scroll_frame, text="🔌 Connection", padding="8")
+        conn_frame.pack(fill=tk.X, pady=3, padx=5)
+        ttk.Label(conn_frame, text="Port:").pack(side=tk.LEFT)
+        self.port_combo = ttk.Combobox(conn_frame, textvariable=self.port_var, width=8, state="readonly")
+        self.port_combo.pack(side=tk.LEFT, padx=2)
+        ttk.Combobox(conn_frame, textvariable=self.baud_var, values=["9600", "115200"], width=8, state="readonly").pack(side=tk.LEFT, padx=2)
+        self.connect_btn = ttk.Button(conn_frame, text="Connect", command=self.connect_port, width=10)
+        self.connect_btn.pack(side=tk.LEFT, padx=2)
+        ttk.Button(conn_frame, text="⟳", width=3, command=self.detect_ports).pack(side=tk.LEFT)
+
+        # 2. COLORS
+        color_frame = ttk.LabelFrame(scroll_frame, text="🎨 Colors", padding="8")
+        color_frame.pack(fill=tk.X, pady=3, padx=5)
+        colors = [("Red", "1"), ("Green", "2"), ("Blue", "3"), ("White", "4"), ("Cyan", "5"),
+                  ("Magenta", "6"), ("Yellow", "7"), ("Orange", "8"), ("Pink", "9"), ("Purple", "0"),
+                  ("Multi", "J")]
         for i, (name, cmd) in enumerate(colors):
-            ttk.Button(color_frame, text=name, width=10, command=lambda c=cmd, n=name: self.send_command_track(c, n)).grid(row=i//5, column=i%5, padx=3, pady=3)
+            ttk.Button(color_frame, text=name, width=8, command=lambda c=cmd, n=name: self.send_command_track(c, n)).grid(row=i//4, column=i%4, padx=2, pady=2)
         
-        # ===== MULTICOLOR QUICK OPTIONS =====
-        mc_frame = ttk.Frame(color_frame)
-        mc_frame.grid(row=2, column=0, columnspan=5, pady=(8,0))
-        ttk.Label(mc_frame, text="Multi-Color Options:").pack(side=tk.LEFT, padx=5)
-        ttk.Button(mc_frame, text="Multi Rainbow", width=14, command=lambda: (self.send_command_track('J','Multi-Color'), self.send_command('~H2\n'))).pack(side=tk.LEFT, padx=4)
-        ttk.Button(mc_frame, text="Pastel Cycle", width=14, command=lambda: (self.send_command_track('J','Multi-Color'), self.send_command('~I200\n'), self.send_command('~H1\n'))).pack(side=tk.LEFT, padx=4)
-        ttk.Button(mc_frame, text="RGB Cycle", width=12, command=lambda: (self.send_command_track('J','Multi-Color'), self.send_command('~I255\n'), self.send_command('~H3\n'))).pack(side=tk.LEFT, padx=4)
-        
-        # ===== EFFECTS SECTION (2 ROWS) =====
-        effect_frame = ttk.LabelFrame(parent_frame, text="Effects (12 Available)", padding="10")
-        effect_frame.pack(fill=tk.X, pady=5)
-        
-        effects = [("Rainbow", "R"), ("Pulse", "P"), ("Static", "S"), ("Wipe", "W"),
-               ("Theater", "T"), ("Sparkle", "K"), ("Sinelon", "N"), ("BPM", "B"),
-               ("Confetti", "C"), ("Fire", "F"), ("Strobe", "X"), ("Breathing", "E"),
-               ("Tipsy", "Y"), ("Multi-Color", "J")]
-        
+        # 3. EFFECTS
+        effect_frame = ttk.LabelFrame(scroll_frame, text="✨ Effects", padding="8")
+        effect_frame.pack(fill=tk.X, pady=3, padx=5)
+        # Use full names for effects
+        effects = [
+            ("Rainbow", "R"), ("Police", "P"), ("Strobe", "S"), ("Wipe", "W"), 
+            ("Theater", "T"), ("Scanner", "K"), ("Snow", "N"), ("Beam", "B"), 
+            ("Comet", "C"), ("Fire", "F"), ("Xbox", "X"), ("Breath", "E"),
+            ("Typer", "Y")
+        ]
         for i, (name, cmd) in enumerate(effects):
-            ttk.Button(effect_frame, text=name, width=11, command=lambda c=cmd, n=name: self.send_command_track(c, n)).grid(row=i//6, column=i%6, padx=3, pady=3)
-        
-        # ===== BRIGHTNESS & SPEED CONTROLS =====
-        control_frame = ttk.Frame(parent_frame)
-        control_frame.pack(fill=tk.X, pady=5)
-        
-        brightness_frame = ttk.LabelFrame(control_frame, text="Brightness", padding="10")
-        brightness_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
-        
-        ttk.Button(brightness_frame, text="Low (25%)", command=lambda: self.send_command("!")).pack(side=tk.LEFT, padx=2)
-        ttk.Button(brightness_frame, text="Medium (50%)", command=lambda: self.send_command("@")).pack(side=tk.LEFT, padx=2)
-        ttk.Button(brightness_frame, text="+", width=3, command=lambda: self.send_command("+")).pack(side=tk.LEFT, padx=2)
-        ttk.Button(brightness_frame, text="-", width=3, command=lambda: self.send_command("-")).pack(side=tk.LEFT, padx=2)
-        
-        speed_frame = ttk.LabelFrame(control_frame, text="Speed Presets", padding="10")
-        speed_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
-        
-        # Original single-char presets (kept for compatibility)
-        speeds = [("VFast", "Q"), ("Fast", "D"), ("Med", "V"), ("Slow", "Z"), ("VSlow", "M")]
-        for name, cmd in speeds:
-            ttk.Button(speed_frame, text=name, width=7, command=lambda c=cmd: self.send_command(c)).pack(side=tk.LEFT, padx=2)
+            ttk.Button(effect_frame, text=name, width=10, command=lambda c=cmd, n=name: self.send_command_track(c, n)).grid(row=i//4, column=i%4, padx=2, pady=2)
 
-        # Additional numeric presets (send ~V<value> so Arduino uses numeric speed)
-        more = [("Ultra", 2), ("Super", 8), ("Very Fast", 12), ("Normal", 30), ("Slower", 80), ("Turtle", 150), ("Molasses", 250)]
-        for name, val in more:
-            ttk.Button(speed_frame, text=name, width=8, command=lambda v=val: self.send_command(f"~V{v}\n")).pack(side=tk.LEFT, padx=2)
-        
-        # ===== CUSTOMIZATION =====
-        custom_frame = ttk.LabelFrame(parent_frame, text="Customization", padding="10")
-        custom_frame.pack(fill=tk.X, pady=5)
-        
-        ttk.Label(custom_frame, text="Intensity:").pack(side=tk.LEFT, padx=5)
-        ttk.Button(custom_frame, text="−", width=2, command=lambda: self.send_command("#")).pack(side=tk.LEFT, padx=2)
-        ttk.Button(custom_frame, text="+", width=2, command=lambda: self.send_command("$")).pack(side=tk.LEFT, padx=2)
-        
-        ttk.Label(custom_frame, text="| Saturation:").pack(side=tk.LEFT, padx=5)
-        ttk.Button(custom_frame, text="−", width=2, command=lambda: self.send_command("%")).pack(side=tk.LEFT, padx=2)
-        ttk.Button(custom_frame, text="+", width=2, command=lambda: self.send_command("^")).pack(side=tk.LEFT, padx=2)
-        
-        ttk.Label(custom_frame, text="| Hue Speed:").pack(side=tk.LEFT, padx=5)
-        ttk.Button(custom_frame, text="−", width=2, command=lambda: self.send_command("&")).pack(side=tk.LEFT, padx=2)
-        ttk.Button(custom_frame, text="+", width=2, command=lambda: self.send_command("*")).pack(side=tk.LEFT, padx=2)
-        
-        ttk.Button(custom_frame, text="| Reverse LEDs", command=lambda: self.send_command(";")).pack(side=tk.LEFT, padx=2)
-        ttk.Button(custom_frame, text="Mirror", command=lambda: self.send_command("'")).pack(side=tk.LEFT, padx=2)
-        ttk.Button(custom_frame, text="Wave Dir", command=lambda: self.send_command("[")).pack(side=tk.LEFT, padx=2)
-        ttk.Button(custom_frame, text="Rainbow Modes", command=lambda: self.send_command("]")).pack(side=tk.LEFT, padx=2)
+        # 4. SLIDERS (Full Control)
+        slider_frame = ttk.LabelFrame(scroll_frame, text="⚙ Fine Tuning", padding="8")
+        slider_frame.pack(fill=tk.X, pady=3, padx=5)
 
-        # ===== QUICK SLIDERS (compact, visible on Quick Control tab) =====
-        quick_sliders = ttk.LabelFrame(parent_frame, text="Quick Sliders", padding="8")
-        quick_sliders.pack(fill=tk.X, pady=5)
+        # Helper to create compact sliders with labels
+        def add_compact_slider(parent, label_text, var_name, from_val, to_val, cmd_func, change_func):
+            frame = ttk.Frame(parent)
+            frame.pack(fill=tk.X, pady=2)
+            ttk.Label(frame, text=label_text, width=7).pack(side=tk.LEFT)
+            lbl = ttk.Label(frame, text=str(from_val), width=4)
+            slider = ttk.Scale(frame, from_=from_val, to=to_val, orient=tk.HORIZONTAL, command=change_func)
+            slider.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+            lbl.pack(side=tk.RIGHT)
+            
+            setattr(self, var_name + "_slider", slider)
+            setattr(self, var_name + "_label", lbl)
+            slider.bind("<ButtonRelease-1>", lambda e: cmd_func())
+            return slider
 
-        # Brightness (compact)
-        ttk.Label(quick_sliders, text="Bright").pack(side=tk.LEFT, padx=4)
-        self.q_bright = ttk.Scale(quick_sliders, from_=0, to=255, orient=tk.HORIZONTAL, command=self.on_q_brightness_change)
-        self.q_bright.set(self.brightness_val)
-        self.q_bright.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=4)
-        self.q_bright.bind("<ButtonRelease-1>", lambda e: (self.bright_slider.set(int(float(self.q_bright.get()))), self.send_brightness()))
+        self.brightness_slider = add_compact_slider(slider_frame, "Bright:", "brightness", 0, 255, self.send_brightness, self.on_brightness_change)
+        self.brightness_slider.set(self.brightness_val)
+        
+        self.speed_slider = add_compact_slider(slider_frame, "Speed:", "speed", 1, 200, self.send_speed, self.on_speed_change)
+        self.speed_slider.set(self.speed_val)
+        
+        self.intensity_slider = add_compact_slider(slider_frame, "Intens:", "intensity", 0, 255, self.send_intensity, self.on_intensity_change)
+        self.intensity_slider.set(self.intensity_val)
+        
+        self.saturation_slider = add_compact_slider(slider_frame, "Satur:", "saturation", 0, 255, self.send_saturation, self.on_saturation_change)
+        self.saturation_slider.set(self.saturation_val)
+        
+        self.hue_rotation_slider = add_compact_slider(slider_frame, "Hue Rot:", "hue_rotation", 1, 5, self.send_hue, self.on_hue_change)
+        self.hue_rotation_slider.set(self.hue_rotation_val)
 
-        # Intensity (compact)
-        ttk.Label(quick_sliders, text="Intensity").pack(side=tk.LEFT, padx=4)
-        self.q_intensity = ttk.Scale(quick_sliders, from_=0, to=255, orient=tk.HORIZONTAL, command=self.on_q_intensity_change)
-        self.q_intensity.set(self.intensity_val)
-        self.q_intensity.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=4)
-        self.q_intensity.bind("<ButtonRelease-1>", lambda e: (self.intensity_slider.set(int(float(self.q_intensity.get()))), self.send_intensity()))
+        # 5. CUSTOM RGB PICKER
+        rgb_frame = ttk.LabelFrame(scroll_frame, text="🌈 Custom RGB", padding="8")
+        rgb_frame.pack(fill=tk.X, pady=3, padx=5)
+        self.color_canvas = tk.Canvas(rgb_frame, bg="red", width=60, height=25, relief=tk.SUNKEN, bd=1)
+        self.color_canvas.pack(side=tk.LEFT, padx=5)
+        ttk.Button(rgb_frame, text="Pick", width=6, command=self.pick_custom_color).pack(side=tk.LEFT, padx=2)
+        self.rgb_label = ttk.Label(rgb_frame, text="(255,0,0)", font=("Arial", 8))
+        self.rgb_label.pack(side=tk.LEFT, padx=5)
+        ttk.Button(rgb_frame, text="Apply", width=6, command=self.send_custom_rgb).pack(side=tk.LEFT, padx=2)
 
-        # Saturation (compact)
-        ttk.Label(quick_sliders, text="Sat").pack(side=tk.LEFT, padx=4)
-        self.q_saturation = ttk.Scale(quick_sliders, from_=0, to=255, orient=tk.HORIZONTAL, command=self.on_q_saturation_change)
-        self.q_saturation.set(self.saturation_val)
-        self.q_saturation.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=4)
-        self.q_saturation.bind("<ButtonRelease-1>", lambda e: (self.saturation_slider.set(int(float(self.q_saturation.get()))), self.send_saturation()))
+        # 6. SYSTEM COMMANDS
+        sys_frame = ttk.LabelFrame(scroll_frame, text="💻 System", padding="8")
+        sys_frame.pack(fill=tk.X, pady=3, padx=5)
+        sys_btns = [
+            ("Status", "L"), ("Show Custom", ")"), ("Hard Reset", "("), 
+            ("Clear LEDs", "{"), ("Auto Cycle", "A"), ("Pin Config", "I")
+        ]
+        for i, (name, cmd) in enumerate(sys_btns):
+            ttk.Button(sys_frame, text=name, width=12, command=lambda c=cmd: self.send_command(c)).grid(row=i//3, column=i%3, padx=2, pady=2)
 
-        # Hue speed (compact)
-        ttk.Label(quick_sliders, text="Hue").pack(side=tk.LEFT, padx=4)
-        self.q_hue = ttk.Scale(quick_sliders, from_=1, to=5, orient=tk.HORIZONTAL, command=self.on_q_hue_change)
-        self.q_hue.set(self.hue_rotation_val)
-        self.q_hue.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=4)
-        self.q_hue.bind("<ButtonRelease-1>", lambda e: (self.hue_slider.set(int(float(self.q_hue.get()))), self.send_hue()))
+        # ===== RIGHT COLUMN: VISUALIZATION & MONITORING =====
+        right_container = ttk.Frame(main_pane, padding="10")
+        main_pane.add(right_container, weight=1)
+
+        # 1. Graph Canvas
+        graph_box = ttk.LabelFrame(right_container, text="📊 Real-time Multi-Channel Oscilloscope", padding="5")
+        graph_box.pack(fill=tk.BOTH, expand=True)
+
+        self.graph_canvas = tk.Canvas(graph_box, bg="#050510", highlightthickness=0)
+        self.graph_canvas.pack(fill=tk.BOTH, expand=True)
+        self.graph_canvas.bind("<Configure>", lambda e: self.draw_graph())
+
+        # 2. Channel Selectors
+        chan_frame = ttk.Frame(right_container)
+        chan_frame.pack(fill=tk.X, pady=5)
+        self.channel_vars = {}
+        # Explicit keys to satisfy type checker
+        main_telemetry_keys = ['BR', 'M', 'S', 'I', 'SAT', 'H']
+        for key in main_telemetry_keys:
+            if key in self.telemetry_channels:
+                chan_data = self.telemetry_channels[key]
+                show_val = bool(chan_data.get('show', True))
+                v = tk.BooleanVar(value=show_val)
+                self.channel_vars[key] = v
+                name_val = str(chan_data.get('name', key))
+                ttk.Checkbutton(chan_frame, text=name_val, variable=v, 
+                               command=lambda k=key: self.toggle_channel(k)).pack(side=tk.LEFT, padx=5)
+
+        # 3. Statistics Dashboard
+        stats_frame = ttk.LabelFrame(right_container, text="📈 Signal Statistics", padding="8")
+        stats_frame.pack(fill=tk.X, pady=5)
         
-        # ===== SYSTEM COMMANDS =====
-        system_frame = ttk.LabelFrame(parent_frame, text="System", padding="10")
-        system_frame.pack(fill=tk.X, pady=5)
+        # Grid for stats to keep them centered and neat
+        for i, txt in enumerate(["CURRENT", "MIN", "MAX", "AVG", "SAMPLES"]):
+            ttk.Label(stats_frame, text=txt, font=("Arial", 7, "bold")).grid(row=0, column=i, padx=15)
         
-        ttk.Button(system_frame, text="Status", command=lambda: self.send_command("L")).pack(side=tk.LEFT, padx=3)
-        ttk.Button(system_frame, text="Show Custom", command=lambda: self.send_command(")")).pack(side=tk.LEFT, padx=3)
-        ttk.Button(system_frame, text="LED Settings", command=lambda: self.send_command("}")).pack(side=tk.LEFT, padx=3)
-        ttk.Button(system_frame, text="Clear LEDs", command=lambda: self.send_command("{")).pack(side=tk.LEFT, padx=3)
-        ttk.Button(system_frame, text="Auto-Cycle", command=lambda: self.send_command("A")).pack(side=tk.LEFT, padx=3)
-        ttk.Button(system_frame, text="Reset All", command=lambda: self.send_command("(")).pack(side=tk.LEFT, padx=3)
-    
-    def setup_advanced_tab(self, parent):
-        parent_frame = ttk.Frame(parent, padding="10")
-        parent_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # ===== BRIGHTNESS SLIDER =====
-        bright_frame = ttk.LabelFrame(parent_frame, text="Brightness Control", padding="10")
-        bright_frame.pack(fill=tk.X, pady=5)
-        
-        self.bright_label = ttk.Label(bright_frame, text="255", width=5)
-        self.bright_slider = ttk.Scale(bright_frame, from_=0, to=255, orient=tk.HORIZONTAL, command=self.on_brightness_change)
-        self.bright_slider.set(255)
-        self.bright_slider.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
-        self.bright_label.pack(side=tk.LEFT, padx=5)
-        # Send brightness when user releases the slider
-        self.bright_slider.bind("<ButtonRelease-1>", lambda e: self.send_brightness())
-        
-        # ===== SPEED SLIDER =====
-        speed_frame = ttk.LabelFrame(parent_frame, text="Speed Control (1-200ms)", padding="10")
-        speed_frame.pack(fill=tk.X, pady=5)
-        
-        self.speed_label = ttk.Label(speed_frame, text="10ms", width=7)
-        self.speed_slider = ttk.Scale(speed_frame, from_=1, to=200, orient=tk.HORIZONTAL, command=self.on_speed_change)
-        self.speed_slider.set(10)
-        self.speed_slider.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
-        self.speed_label.pack(side=tk.LEFT, padx=5)
-        self.speed_slider.bind("<ButtonRelease-1>", lambda e: self.send_speed())
-        
-        # ===== INTENSITY SLIDER =====
-        intensity_frame = ttk.LabelFrame(parent_frame, text="Effect Intensity (0-255)", padding="10")
-        intensity_frame.pack(fill=tk.X, pady=5)
-        
-        self.intensity_label = ttk.Label(intensity_frame, text="128", width=5)
-        self.intensity_slider = ttk.Scale(intensity_frame, from_=0, to=255, orient=tk.HORIZONTAL, command=self.on_intensity_change)
-        self.intensity_slider.set(128)
-        self.intensity_slider.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
-        self.intensity_label.pack(side=tk.LEFT, padx=5)
-        self.intensity_slider.bind("<ButtonRelease-1>", lambda e: self.send_intensity())
-        
-        # ===== SATURATION SLIDER =====
-        saturation_frame = ttk.LabelFrame(parent_frame, text="Color Saturation (0-255)", padding="10")
-        saturation_frame.pack(fill=tk.X, pady=5)
-        
-        self.saturation_label = ttk.Label(saturation_frame, text="255", width=5)
-        self.saturation_slider = ttk.Scale(saturation_frame, from_=0, to=255, orient=tk.HORIZONTAL, command=self.on_saturation_change)
-        self.saturation_slider.set(255)
-        self.saturation_slider.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
-        self.saturation_label.pack(side=tk.LEFT, padx=5)
-        self.saturation_slider.bind("<ButtonRelease-1>", lambda e: self.send_saturation())
-        
-        # ===== HUE ROTATION SPEED SLIDER =====
-        hue_frame = ttk.LabelFrame(parent_frame, text="Hue Rotation Speed (1-5)", padding="10")
-        hue_frame.pack(fill=tk.X, pady=5)
-        
-        self.hue_label = ttk.Label(hue_frame, text="1", width=3)
-        self.hue_slider = ttk.Scale(hue_frame, from_=1, to=5, orient=tk.HORIZONTAL, command=self.on_hue_change)
-        self.hue_slider.set(1)
-        self.hue_slider.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
-        self.hue_label.pack(side=tk.LEFT, padx=5)
-        self.hue_slider.bind("<ButtonRelease-1>", lambda e: self.send_hue())
-        
-        # ===== CUSTOM RGB COLOR PICKER =====
-        color_frame = ttk.LabelFrame(parent_frame, text="Custom RGB Color", padding="10")
-        color_frame.pack(fill=tk.X, pady=5)
-        
-        self.color_canvas = tk.Canvas(color_frame, bg="red", width=100, height=40, relief=tk.SUNKEN, bd=2)
-        self.color_canvas.pack(side=tk.LEFT, padx=10)
-        
-        ttk.Button(color_frame, text="Pick Color", command=self.pick_custom_color).pack(side=tk.LEFT, padx=5)
-        
-        self.rgb_label = ttk.Label(color_frame, text="RGB: (255, 0, 0)", font=("Arial", 10))
-        self.rgb_label.pack(side=tk.LEFT, padx=10)
-        
-        ttk.Button(color_frame, text="Send Custom RGB", command=self.send_custom_rgb).pack(side=tk.LEFT, padx=5)
+        self.current_brightness_label = ttk.Label(stats_frame, text="0", font=("Courier", 12, "bold"), foreground="#00ff00")
+        self.current_brightness_label.grid(row=1, column=0)
+        self.min_brightness_label = ttk.Label(stats_frame, text="0", font=("Courier", 10))
+        self.min_brightness_label.grid(row=1, column=1)
+        self.max_brightness_label = ttk.Label(stats_frame, text="0", font=("Courier", 10))
+        self.max_brightness_label.grid(row=1, column=2)
+        self.avg_brightness_label = ttk.Label(stats_frame, text="0", font=("Courier", 10))
+        self.avg_brightness_label.grid(row=1, column=3)
+        self.samples_label = ttk.Label(stats_frame, text="0", font=("Courier", 10))
+        self.samples_label.grid(row=1, column=4)
+
+        # Auto-start monitoring
+        self.monitoring_enabled = True
+        self.auto_update_graph = True
+        self.schedule_graph_update()
     
     def setup_preset_tab(self, parent):
         parent_frame = ttk.Frame(parent, padding="10")
@@ -362,7 +357,6 @@ class FanControlGUI:
         preset_frame.pack(fill=tk.X, pady=5)
         
         ttk.Label(preset_frame, text="Preset Name:").pack(side=tk.LEFT, padx=5)
-        self.preset_name_var = tk.StringVar()
         ttk.Entry(preset_frame, textvariable=self.preset_name_var, width=20).pack(side=tk.LEFT, padx=5)
         
         ttk.Button(preset_frame, text="Save Current", command=self.save_preset).pack(side=tk.LEFT, padx=3)
@@ -383,7 +377,6 @@ class FanControlGUI:
         self.record_btn.pack(side=tk.LEFT, padx=3)
         
         ttk.Label(macro_frame, text="Macro Name:").pack(side=tk.LEFT, padx=5)
-        self.macro_name_var = tk.StringVar()
         ttk.Entry(macro_frame, textvariable=self.macro_name_var, width=20).pack(side=tk.LEFT, padx=5)
         
         ttk.Button(macro_frame, text="Save Macro", command=self.save_macro).pack(side=tk.LEFT, padx=3)
@@ -405,129 +398,7 @@ class FanControlGUI:
         
         ttk.Button(commands_frame, text="Clear Recording", command=self.clear_recording).pack(pady=5)
     
-    def setup_status_tab(self, parent):
-        parent_frame = ttk.Frame(parent, padding="10")
-        parent_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # ===== STATUS DISPLAY =====
-        status_frame = ttk.LabelFrame(parent_frame, text="Current Status", padding="10")
-        status_frame.pack(fill=tk.X, pady=5)
-        
-        self.status_info_text = scrolledtext.ScrolledText(status_frame, height=6, width=80, state=tk.DISABLED)
-        self.status_info_text.pack(fill=tk.BOTH, expand=True)
-        
-        # NOTE: Command history is shown in the persistent pane at the bottom of the window.
-        ttk.Button(parent_frame, text="Clear History (bottom pane)", command=self.clear_history).pack(pady=5)
-        
-        # ===== FAVORITES / QUICK PRESETS =====
-        favorites_frame = ttk.LabelFrame(parent_frame, text="Quick Favorites", padding="10")
-        favorites_frame.pack(fill=tk.X, pady=5)
-        
-        favorite_combos = [
-            ("Chill Rainbow", "R", 100, "1"),
-            ("Fast Pulse Red", "P", 5, "1"),
-            ("Calm Fire", "F", 50, "1"),
-            ("Disco Strobe", "X", 5, "1"),
-        ]
-        
-        for label, effect, speed, color in favorite_combos:
-            ttk.Button(favorites_frame, text=label, command=lambda e=effect, s=speed, c=color: self.play_favorite(e, s, c)).pack(side=tk.LEFT, padx=3)
     
-    def setup_graph_tab(self, parent):
-        """Setup the Multi-Channel Oscilloscope tab"""
-        parent_frame = ttk.Frame(parent, padding="10")
-        parent_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # ===== GRAPH CONTROLS =====
-        control_frame = ttk.LabelFrame(parent_frame, text="Oscilloscope Controls", padding="10")
-        control_frame.pack(fill=tk.X, pady=5)
-        
-        ttk.Button(control_frame, text="⏵ Start Monitoring", command=self.start_monitoring).pack(side=tk.LEFT, padx=5)
-        ttk.Button(control_frame, text="⏹ Stop Monitoring", command=self.stop_monitoring).pack(side=tk.LEFT, padx=5)
-        ttk.Button(control_frame, text="Clear Data", command=self.clear_graph).pack(side=tk.LEFT, padx=5)
-        
-        # ===== Tipsy Sync Tuning =====
-        ttk.Label(control_frame, text="Tipsy Sync:").pack(side=tk.LEFT, padx=8)
-        self.tipsy_slider = ttk.Scale(control_frame, from_=32, to=255, orient=tk.HORIZONTAL, command=self.on_tipsy_sync_change)
-        self.tipsy_slider.set(self.tipsy_sync_value)
-        self.tipsy_slider.pack(side=tk.LEFT, fill=tk.X, expand=False, padx=4)
-        self.tipsy_slider.bind("<ButtonRelease-1>", lambda e: self.send_tipsy_sync())
-
-        ttk.Checkbutton(control_frame, text="Bind to Measured Speed", variable=self.bind_tipsy_var, command=self.toggle_bind_tipsy).pack(side=tk.LEFT, padx=10)
-        
-        # Auto-update toggle
-        self.auto_update_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(control_frame, text="📊 Live Updates", variable=self.auto_update_var, 
-                       command=self.toggle_auto_update).pack(side=tk.LEFT, padx=20)
-        
-        self.monitoring_status = ttk.Label(control_frame, text="Status: Stopped", foreground="red")
-        self.monitoring_status.pack(side=tk.LEFT, padx=20)
-        
-        # ===== CHANNEL SELECTION =====
-        channel_frame = ttk.LabelFrame(parent_frame, text="Signal Channels (enable/disable channels to display)", padding="10")
-        channel_frame.pack(fill=tk.X, pady=5)
-        
-        self.channel_vars = {}
-        for key, channel in list(self.telemetry_channels.items())[:6]:  # Show first 6 main channels
-            var = tk.BooleanVar(value=channel['show'])
-            self.channel_vars[key] = var
-            chk = ttk.Checkbutton(channel_frame, text=f"▮ {channel['name']}", variable=var,
-                                 command=lambda k=key: self.toggle_channel(k))
-            chk.pack(side=tk.LEFT, padx=10)
-        
-        # RGB sub-channels (hidden by default)
-        rgb_frame = ttk.Frame(channel_frame)
-        rgb_frame.pack(fill=tk.X, padx=10, pady=5)
-        ttk.Label(rgb_frame, text="RGB Channels:").pack(side=tk.LEFT, padx=5)
-        
-        for key in ['R', 'G', 'BL']:
-            if key in self.telemetry_channels:
-                var = tk.BooleanVar(value=self.telemetry_channels[key]['show'])
-                self.channel_vars[key] = var
-                chk = ttk.Checkbutton(rgb_frame, text=self.telemetry_channels[key]['name'], variable=var,
-                                     command=lambda k=key: self.toggle_channel(k))
-                chk.pack(side=tk.LEFT, padx=10)
-        
-        # ===== CANVAS FOR OSCILLOSCOPE =====
-        graph_frame = ttk.LabelFrame(parent_frame, text="Multi-Channel Oscilloscope", padding="5")
-        graph_frame.pack(fill=tk.BOTH, expand=True, pady=5)
-        
-        self.graph_canvas = tk.Canvas(graph_frame, bg="#0a0a1a", height=350, relief=tk.SUNKEN, bd=2)
-        self.graph_canvas.pack(fill=tk.BOTH, expand=True)
-        self.graph_canvas.bind("<Configure>", lambda e: self.draw_graph())  # Redraw on resize
-        
-        # ===== STATS DISPLAY =====
-        stats_frame = ttk.LabelFrame(parent_frame, text="Signal Statistics", padding="10")
-        stats_frame.pack(fill=tk.X, pady=5)
-        
-        # Create a frame for stats
-        stats_info = ttk.Frame(stats_frame)
-        stats_info.pack(fill=tk.X, expand=True)
-        
-        ttk.Label(stats_info, text="Current Brightness:").pack(side=tk.LEFT, padx=5)
-        self.current_brightness_label = ttk.Label(stats_info, text="0", font=("Arial", 10, "bold"))
-        self.current_brightness_label.pack(side=tk.LEFT, padx=5)
-        
-        ttk.Label(stats_info, text="| Min:").pack(side=tk.LEFT, padx=5)
-        self.min_brightness_label = ttk.Label(stats_info, text="0")
-        self.min_brightness_label.pack(side=tk.LEFT, padx=5)
-        
-        ttk.Label(stats_info, text="| Max:").pack(side=tk.LEFT, padx=5)
-        self.max_brightness_label = ttk.Label(stats_info, text="0")
-        self.max_brightness_label.pack(side=tk.LEFT, padx=5)
-        
-        ttk.Label(stats_info, text="| Avg:").pack(side=tk.LEFT, padx=5)
-        self.avg_brightness_label = ttk.Label(stats_info, text="0")
-        self.avg_brightness_label.pack(side=tk.LEFT, padx=5)
-        
-        ttk.Label(stats_info, text="| Samples:").pack(side=tk.LEFT, padx=5)
-        self.samples_label = ttk.Label(stats_info, text="0")
-        self.samples_label.pack(side=tk.LEFT, padx=5)
-        
-        self.monitoring_enabled = False
-        self.draw_graph()
-        # Start auto-update timer
-        self.schedule_graph_update()
     
     def setup_settings_tab(self, parent):
         """Setup the Settings & Configuration tab"""
@@ -548,15 +419,32 @@ After changing pins, you must recompile and upload the .ino sketch to the Arduin
         config_subframe = ttk.Frame(pin_frame)
         config_subframe.pack(fill=tk.X, pady=10)
         
-        ttk.Label(config_subframe, text="LED Pin (0-13):").pack(side=tk.LEFT, padx=5)
-        self.pin_var = tk.StringVar(value=str(self.led_pin))
-        pin_spinbox = ttk.Spinbox(config_subframe, from_=0, to=13, textvariable=self.pin_var, width=5)
-        pin_spinbox.pack(side=tk.LEFT, padx=5)
+        ttk.Button(config_subframe, text="Save Config", command=self.save_arduino_config).pack(side=tk.LEFT, padx=10)
         
-        ttk.Label(config_subframe, text="| Number of LEDs:").pack(side=tk.LEFT, padx=5)
-        self.led_count_var = tk.StringVar(value=str(self.num_leds))
-        led_spinbox = ttk.Spinbox(config_subframe, from_=1, to=60, textvariable=self.led_count_var, width=5)
-        led_spinbox.pack(side=tk.LEFT, padx=5)
+        status_frame = ttk.Frame(pin_frame)
+        status_frame.pack(fill=tk.X, pady=5)
+        ttk.Label(status_frame, text="Current Config: Pin ").pack(side=tk.LEFT)
+        self.display_pin_label = ttk.Label(status_frame, text=str(self.led_pin), font=("Arial", 10, "bold"))
+        self.display_pin_label.pack(side=tk.LEFT)
+        ttk.Label(status_frame, text=", LEDs ").pack(side=tk.LEFT)
+        self.display_led_count_label = ttk.Label(status_frame, text=str(self.num_leds), font=("Arial", 10, "bold"))
+        self.display_led_count_label.pack(side=tk.LEFT)
+
+        # ===== CODE SNIPPET =====
+        snippet_frame = ttk.LabelFrame(parent_frame, text="Generated Arduino Code Snippet", padding="10")
+        snippet_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        self.code_snippet_text = scrolledtext.ScrolledText(snippet_frame, height=8, width=80, font=("Consolas", 9))
+        self.code_snippet_text.pack(fill=tk.BOTH, expand=True)
+        self.update_code_snippet()
+        
+        # ===== MONITORING CONTROL =====
+        mon_frame = ttk.LabelFrame(parent_frame, text="Monitoring Process", padding="10")
+        mon_frame.pack(fill=tk.X, pady=5)
+        self.monitoring_status = ttk.Label(mon_frame, text="Status: Ready", foreground="blue")
+        self.monitoring_status.pack(side=tk.LEFT, padx=10)
+        ttk.Button(mon_frame, text="Start", command=self.start_monitoring).pack(side=tk.LEFT, padx=5)
+        ttk.Button(mon_frame, text="Stop", command=self.stop_monitoring).pack(side=tk.LEFT, padx=5)
         
         ttk.Button(config_subframe, text="Save Config", command=self.save_arduino_config).pack(side=tk.LEFT, padx=10)
         ttk.Button(config_subframe, text="Load Config File", command=self.load_config_file_dialog).pack(side=tk.LEFT, padx=5)
@@ -670,48 +558,62 @@ Your current configuration (saved locally):
         
         # Draw all enabled channels
         has_data = False
-        for channel_key, channel_info in self.telemetry_channels.items():
-            if not channel_info['show']:
+        # Use keys() to avoid complex tuple unpacking lints
+        for key in self.telemetry_channels.keys():
+            info = self.telemetry_channels[key]
+            if not bool(info.get('show', False)):
                 continue
                 
-            history = channel_info['history']
-            if len(history) > 1:
+            history_data = list(info.get('history', []))
+            h_len_actual = len(history_data)
+            
+            if h_len_actual > 1:
                 has_data = True
                 points = []
                 
-                for idx, value in enumerate(history):
-                    x = left_margin + (idx / max(1, len(history) - 1)) * plot_width
+                h_divisor = float(max(1, h_len_actual - 1))
+                for idx, value in enumerate(history_data):
+                    try:
+                        v_float = float(value)
+                    except (ValueError, TypeError):
+                        v_float = 0.0
+                        
+                    x_pos = float(left_margin) + (float(idx) / h_divisor) * float(plot_width)
                     # Normalize value (0-255 range)
-                    normalized = min(max(value / 255.0, 0), 1)
-                    y = height - bottom_margin - normalized * plot_height
-                    points.append((x, y))
+                    norm_val = min(max(v_float / 255.0, 0.0), 1.0)
+                    y_pos = float(height) - float(bottom_margin) - norm_val * float(plot_height)
+                    points.append((float(x_pos), float(y_pos)))
                 
                 # Draw lines connecting points
+                chan_color = str(info.get('color', '#00ff00'))
                 if len(points) > 1:
                     for i in range(len(points) - 1):
                         canvas.create_line(points[i][0], points[i][1], points[i+1][0], points[i+1][1],
-                                         fill=channel_info['color'], width=2)
+                                         fill=chan_color, width=2)
                 
                 # Draw data points (small circles)
-                for i, (x, y) in enumerate(points):
-                    radius = 2
-                    canvas.create_oval(x - radius, y - radius, x + radius, y + radius, 
-                                     fill=channel_info['color'], outline=channel_info['color'])
-                    # Highlight the latest point with a larger circle
+                for i, pt in enumerate(points):
+                    px, py = pt
+                    r = 2.0
+                    canvas.create_oval(px - r, py - r, px + r, py + r, 
+                                     fill=chan_color, outline=chan_color)
+                    # Highlight the latest point
                     if i == len(points) - 1:
-                        canvas.create_oval(x - 4, y - 4, x + 4, y + 4, 
-                                         outline=channel_info['color'], width=2)
+                        canvas.create_oval(px - 4.0, py - 4.0, px + 4.0, py + 4.0, 
+                                         outline=chan_color, width=2)
         
         # Draw legend
-        legend_y = top_margin + 10
-        legend_x = width - right_margin - 150
-        for channel_key, channel_info in self.telemetry_channels.items():
-            if channel_info['show']:
-                canvas.create_rectangle(legend_x, legend_y, legend_x + 12, legend_y + 12, 
-                                       fill=channel_info['color'], outline=channel_info['color'])
-                canvas.create_text(legend_x + 18, legend_y + 6, text=channel_info['name'],
-                                 anchor=tk.W, font=("Courier", 8), fill=channel_info['color'])
-                legend_y += 15
+        leg_y = float(top_margin) + 10.0
+        leg_x = float(width) - float(right_margin) - 150.0
+        for key in self.telemetry_channels.keys():
+            info = self.telemetry_channels[key]
+            if bool(info.get('show', False)):
+                c = str(info.get('color', '#00ff00'))
+                canvas.create_rectangle(leg_x, leg_y, leg_x + 12.0, leg_y + 12.0, 
+                                       fill=c, outline=c)
+                canvas.create_text(leg_x + 18.0, leg_y + 6.0, text=str(info.get('name', key)),
+                                 anchor=tk.W, font=("Courier", 8), fill=c)
+                leg_y += 15.0
         
         # Empty state message
         if not has_data:
@@ -1034,48 +936,54 @@ Your current configuration (saved locally):
     
     def on_brightness_change(self, val):
         """Handle brightness slider changes"""
-        val = int(float(val))
-        self.brightness_val = val
-        if hasattr(self, 'bright_label'):
-            self.bright_label.config(text=str(val))
-        # keep quick slider in sync without causing recursion
-        if hasattr(self, 'q_bright'):
-            try:
-                if int(float(self.q_bright.get())) != val:
-                    self.q_bright.set(val)
-            except:
-                pass
-        # Update PWM graph on slider change
-        self.update_pwm_graph(val)
+        try:
+            v = int(float(val))
+            self.brightness_val = v
+            if self.brightness_label:
+                self.brightness_label.config(text=str(v))
+            self.update_pwm_graph(v)
+        except:
+            pass
     
     def on_speed_change(self, val):
         """Handle speed slider changes"""
-        val = int(float(val))
-        self.speed_val = val
-        if hasattr(self, 'speed_label'):
-            self.speed_label.config(text=f"{val}ms")
-        if hasattr(self, 'q_speed'):
-            try:
-                if int(float(self.q_speed.get())) != val:
-                    self.q_speed.set(val)
-            except:
-                pass
+        try:
+            v = int(float(val))
+            self.speed_val = v
+            if self.speed_label:
+                self.speed_label.config(text=f"{v}ms")
+        except:
+            pass
     
     def on_intensity_change(self, val):
         """Handle intensity slider changes"""
-        # existing method continues unchanged below
-        val = int(float(val))
-        self.intensity_val = val
-        if hasattr(self, 'intensity_label'):
-            self.intensity_label.config(text=str(val))
-        if hasattr(self, 'q_intensity'):
-            try:
-                if int(float(self.q_intensity.get())) != val:
-                    self.q_intensity.set(val)
-            except:
-                pass
-        # Update intensity in Arduino when released
-        # Note: actual send happens on ButtonRelease bound earlier
+        try:
+            v = int(float(val))
+            self.intensity_val = v
+            if self.intensity_label:
+                self.intensity_label.config(text=str(v))
+        except:
+            pass
+
+    def on_saturation_change(self, val):
+        """Handle saturation slider changes"""
+        try:
+            v = int(float(val))
+            self.saturation_val = v
+            if self.saturation_label:
+                self.saturation_label.config(text=str(v))
+        except:
+            pass
+
+    def on_hue_change(self, val):
+        """Handle hue rotation speed slider changes"""
+        try:
+            v = int(float(val))
+            self.hue_rotation_val = v
+            if self.hue_rotation_label:
+                self.hue_rotation_label.config(text=str(v))
+        except:
+            pass
 
     def on_tipsy_sync_change(self, val):
         """Handle tipsy sync slider changes (does not send until release)"""
@@ -1130,81 +1038,6 @@ Your current configuration (saved locally):
             return out_min
         ratio = float(x - in_min) / float(in_max - in_min)
         return out_min + (ratio * (out_max - out_min))
-        val = int(float(val))
-        self.intensity_val = val
-        if hasattr(self, 'intensity_label'):
-            self.intensity_label.config(text=str(val))
-        if hasattr(self, 'q_intensity'):
-            try:
-                if int(float(self.q_intensity.get())) != val:
-                    self.q_intensity.set(val)
-            except:
-                pass
-    
-    def on_saturation_change(self, val):
-        """Handle saturation slider changes"""
-        val = int(float(val))
-        self.saturation_val = val
-        if hasattr(self, 'saturation_label'):
-            self.saturation_label.config(text=str(val))
-        if hasattr(self, 'q_saturation'):
-            try:
-                if int(float(self.q_saturation.get())) != val:
-                    self.q_saturation.set(val)
-            except:
-                pass
-    
-    def on_hue_change(self, val):
-        """Handle hue rotation speed slider changes"""
-        val = int(float(val))
-        self.hue_rotation_val = val
-        if hasattr(self, 'hue_label'):
-            self.hue_label.config(text=str(val))
-        if hasattr(self, 'q_hue'):
-            try:
-                if int(float(self.q_hue.get())) != val:
-                    self.q_hue.set(val)
-            except:
-                pass
-
-    # Lightweight handlers for quick sliders (don't send serial until release)
-    def on_q_brightness_change(self, val):
-        try:
-            v = int(float(val))
-            self.brightness_val = v
-            if hasattr(self, 'bright_label'):
-                self.bright_label.config(text=str(v))
-            # Update graph
-            self.update_pwm_graph(v)
-        except:
-            pass
-
-    def on_q_intensity_change(self, val):
-        try:
-            v = int(float(val))
-            self.intensity_val = v
-            if hasattr(self, 'intensity_label'):
-                self.intensity_label.config(text=str(v))
-        except:
-            pass
-
-    def on_q_saturation_change(self, val):
-        try:
-            v = int(float(val))
-            self.saturation_val = v
-            if hasattr(self, 'saturation_label'):
-                self.saturation_label.config(text=str(v))
-        except:
-            pass
-
-    def on_q_hue_change(self, val):
-        try:
-            v = int(float(val))
-            self.hue_rotation_val = v
-            if hasattr(self, 'hue_label'):
-                self.hue_label.config(text=str(v))
-        except:
-            pass
     
     def pick_custom_color(self):
         """Open color picker dialog"""
@@ -1410,11 +1243,11 @@ Your current configuration (saved locally):
             if not preset:
                 return
             
-            self.bright_slider.set(preset.get("brightness", 255))
+            self.brightness_slider.set(preset.get("brightness", 255))
             self.speed_slider.set(preset.get("speed", 10))
             self.intensity_slider.set(preset.get("intensity", 128))
             self.saturation_slider.set(preset.get("saturation", 255))
-            self.hue_slider.set(preset.get("hue_rotation", 1))
+            self.hue_rotation_slider.set(preset.get("hue_rotation", 1))
             
             self.add_history(f"[PRESET LOADED] {name}")
             messagebox.showinfo("Success", f"Preset '{name}' loaded!")
