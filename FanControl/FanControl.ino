@@ -737,23 +737,16 @@ void pulseEffect(uint8_t wait) {
 void colorWipe(uint8_t wait) {
     static unsigned long lastUpdate = 0;
     static int currentLed = 0;
-    static bool state = true; // true = filling, false = clearing
+    static bool state = true;
     
     if (millis() - lastUpdate >= wait) {
         lastUpdate = millis();
-        
-        if (state) {
-            leds[currentLed] = getPixelColor(currentLed);
-        } else {
-            leds[currentLed] = CRGB::Black;
-        }
-        
+        leds[currentLed] = state ? getPixelColor(currentLed) : CRGB::Black;
         currentLed++;
         if (currentLed >= NUM_LEDS) {
             currentLed = 0;
             state = !state;
         }
-        
         reverseLeds();
         FastLED.show();
     }
@@ -766,15 +759,12 @@ void theaterChase(uint8_t wait) {
     
     if (millis() - lastUpdate >= wait) {
         lastUpdate = millis();
-        
         fill_solid(leds, NUM_LEDS, CRGB::Black);
         for(int i = 0; i < NUM_LEDS; i += 3) {
             int pos = (i + q) % NUM_LEDS;
             leds[pos] = getPixelColor(pos);
         }
-        
         q = (q + 1) % 3;
-        
         reverseLeds();
         FastLED.show();
     }
@@ -783,23 +773,21 @@ void theaterChase(uint8_t wait) {
 // Sparkle: randomly light a pixel briefly (Non-blocking)
 void sparkle(uint8_t wait) {
     static unsigned long lastUpdate = 0;
-    
-    // Always fade regardless of timing for smooth trails
-    fadeToBlackBy(leds, NUM_LEDS, 10);
+    // Faster fading for high-speed sparkle
+    uint8_t fadeRate = map(wait, 1, 200, 50, 5); 
+    fadeToBlackBy(leds, NUM_LEDS, fadeRate);
     
     if (millis() - lastUpdate >= wait) {
         lastUpdate = millis();
-        int i = random(NUM_LEDS);
-        leds[i] = getPixelColor(i);
+        leds[random(NUM_LEDS)] = getPixelColor(0);
     }
-    
     reverseLeds();
     FastLED.show();
 }
 
 void setStaticColor(CRGB color) {
     if (useMultiColor) {
-        multicolorEffect(0); // If multi-color source, just run the rainbow cycle
+        multicolorEffect(0); 
     } else {
         fill_solid(leds, NUM_LEDS, color);
         reverseLeds();
@@ -811,12 +799,12 @@ void setStaticColor(CRGB color) {
 
 // Sinelon: a moving dot with fading trails
 void sinelon(uint8_t wait) {
-    uint8_t speed = map(wait, 1, 200, 30, 2);
+    // Map wait (1-200) to BPM (240-10) for true speed range
+    uint8_t bpm = map(wait, 1, 200, 240, 10);
     fadeToBlackBy(leds, NUM_LEDS, 20);
-    int pos = beatsin16(speed, 0, NUM_LEDS - 1);
+    int pos = beatsin16(bpm, 0, NUM_LEDS - 1);
     
     if (waveDirection) pos = (NUM_LEDS - 1) - pos;
-    
     leds[pos] += getPixelColor(pos);
     
     reverseLeds();
@@ -825,14 +813,14 @@ void sinelon(uint8_t wait) {
 
 // BPM: pulse all LEDs by a beat
 void bpmEffect(uint8_t wait) {
-    uint8_t beat = beatsin8(62, 64, 255);
+    uint8_t bpm = map(wait, 1, 200, 180, 20);
+    uint8_t beat = beatsin8(bpm, 64, 255);
     uint8_t v = (uint16_t(beat) * currentBrightness) / 255;
     
     for (int i = 0; i < NUM_LEDS; i++) {
         CRGB c = getPixelColor(i);
         leds[i] = CRGB((c.r * v) / 255, (c.g * v) / 255, (c.b * v) / 255);
     }
-    
     reverseLeds();
     FastLED.show();
 }
@@ -846,9 +834,7 @@ void confetti(uint8_t wait) {
         lastUpdate = millis();
         int pos = random(NUM_LEDS);
         leds[pos] += getPixelColor(pos);
-        leds[pos].maximizeBrightness();
     }
-    
     reverseLeds();
     FastLED.show();
 }
@@ -873,7 +859,6 @@ void fireEffect(uint8_t wait) {
     for (int j = 0; j < NUM_LEDS; j++) {
         leds[j] = HeatColor(scale8(heat[j], 240));
     }
-    
     reverseLeds();
     FastLED.show();
 }
@@ -883,19 +868,17 @@ void strobeEffect(uint8_t wait) {
     static unsigned long lastUpdate = 0;
     static bool isOn = false;
     
-    uint16_t offTime = wait * 2;
-    uint16_t onTime = max(10, (int)(offTime * effectIntensity / 255));
+    // Strobe timing should be much tighter at fast speeds
+    uint16_t interval = (isOn) ? max(5, (int)(wait * effectIntensity / 100)) : wait;
     
-    if (millis() - lastUpdate >= (isOn ? onTime : offTime)) {
+    if (millis() - lastUpdate >= interval) {
         lastUpdate = millis();
         isOn = !isOn;
-        
         if (isOn) {
             for (int i = 0; i < NUM_LEDS; i++) leds[i] = getPixelColor(i);
         } else {
             fill_solid(leds, NUM_LEDS, CRGB::Black);
         }
-        
         reverseLeds();
         FastLED.show();
     }
@@ -903,12 +886,12 @@ void strobeEffect(uint8_t wait) {
 
 // Breathing effect: smooth fade
 void breathingEffect(uint8_t wait) {
-    static float breathPhase = 0;
-    float speed = map(wait, 1, 200, 10, 1) * 0.05;
-    breathPhase += speed;
+    // Map wait to BPM for the breathing cycle
+    uint8_t bpm = map(wait, 1, 200, 100, 5);
+    uint8_t val = beatsin8(bpm, 0, 255);
     
-    float val = (exp(sin(breathPhase)) - 0.36787944) * 108.0; // smooth breathing curve
-    uint8_t bright = (val * currentBrightness) / 255;
+    // Smooth the curve
+    uint8_t bright = (cubicwave8(val) * currentBrightness) / 255;
     
     for (int i = 0; i < NUM_LEDS; i++) leds[i] = getPixelColor(i);
     
@@ -920,7 +903,7 @@ void breathingEffect(uint8_t wait) {
 
 // Tipsy effect: sync with fan speed
 void tipsyEffect(uint8_t wait) {
-    uint8_t bpm = map(effectSpeed, 1, 200, 220, 8); 
+    uint8_t bpm = map(wait, 1, 200, 220, 8); 
     bpm = max(1, (bpm * tipsySyncScale) / 128);
 
     uint8_t osc = beatsin8(bpm, 0, 255);
@@ -930,25 +913,21 @@ void tipsyEffect(uint8_t wait) {
         leds[i] = getPixelColor(i);
         leds[i].nscale8_video(val);
     }
-
-    if (random8() < 20) {
-        CRGB temp = leds[0];
-        for (int i = 0; i < NUM_LEDS - 1; i++) leds[i] = leds[i + 1];
-        leds[NUM_LEDS - 1] = temp;
-    }
-
     reverseLeds();
     FastLED.show();
 }
 
 // Multi-color effect
 void multicolorEffect(uint8_t wait) {
+    static unsigned long lastUpdate = 0;
+    if (wait > 0 && millis() - lastUpdate < wait) return;
+    lastUpdate = millis();
+
     for (int i = 0; i < NUM_LEDS; i++) {
         leds[i] = CHSV(globalHue + (i * (255 / NUM_LEDS)), colorSaturation, 255);
     }
     reverseLeds();
     FastLED.show();
-    if (wait > 0) delay(wait);
 }
 
 // ===== UTILITY FUNCTIONS =====
