@@ -20,8 +20,8 @@ venv/
 ENV/
 env/
 
-# PyInstaller
-*.spec
+# PyInstaller - Allow spec files
+!*.spec
 dist/
 build/
 *.exe
