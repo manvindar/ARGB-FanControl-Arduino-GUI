@@ -41,6 +41,15 @@ Run the GUI:
 python FanControl_GUI.py
 ```
 
+### Running on Linux
+
+A helper script is provided for Linux users to install dependencies and run the GUI:
+
+1. Make the script executable: `chmod +x run_linux.sh`
+2. Run the script: `./run_linux.sh`
+
+*Note: If you have serial permission issues, run `sudo usermod -a -G dialout $USER` and log back in.*
+
 ## Upload the Arduino sketch
 
 1. Open `FanControl/FanControl.ino` in the Arduino IDE.
@@ -120,6 +129,13 @@ The mapping logic lives in `FanControl_GUI.py` (`map_range`) and can be adjusted
 	- `FanControl/FanControl.ino` — Arduino sketch
 	- `FanControl_GUI.py` — Python GUI and telemetry parser
 - To add telemetry channels: emit a new JSON key in the sketch and add an entry in `telemetry_channels` in the GUI.
+
+## Automatic Releases
+
+This repository is configured with GitHub Actions to automatically build and release standalone binaries for both **Windows** and **Linux**.
+
+- **Trigger:** To create a new release, push a tag starting with `v` (e.g., `v1.0.0`).
+- **Artifact:** Two zip files (`FanControl_GUI_Windows.zip` and `FanControl_GUI_Linux.zip`) will be automatically attached to the GitHub Release.
 
 ## Contributing
 
