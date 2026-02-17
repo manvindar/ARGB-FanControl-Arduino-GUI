@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+dist/
+*.egg-info/
+pip-wheel-metadata/
+
+# Virtual environments
+venv/
+.env
+.venv/
+ENV/
+env/
+
+# PyInstaller
+*.spec
+dist/
+build/
+*.exe
+*.dll
+*.pyd
+
+# IDEs/editors
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Arduino build artifacts
+*.hex
+*.elf
+*.bin
+*.eep
+*.map
+
+# Project-specific / local state
+command_history.json
+localpycs/
+build/
+FanControl_GUI/
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.bak
+*~

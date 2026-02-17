@@ -1,0 +1,60 @@
+# FanControl - Quick Reference Card
+
+## COLORS (Press & Hold Effect)
+```
+1=Red      2=Green    3=Blue     4=White
+5=Cyan     6=Magenta  7=Yellow   8=Orange
+9=Pink     0=Purple
+```
+
+## EFFECTS (Press Letter)
+```
+R=Rainbow      P=Pulse         S=Static      W=Wipe
+T=Theater      K=Sparkle       N=Sinelon     B=BPM
+C=Confetti     F=Fire          X=Strobe      E=Breathing
+```
+
+## SPEED CONTROLS
+```
+QUICK PRESETS:
+Q=Very Fast (5ms)   D=Fast (15ms)    V=Medium (30ms)
+Z=Slow (50ms)       M=Very Slow (100ms)
+
+MANUAL ADJUSTMENT:
+> = Faster          < = Slower
+```
+
+## BRIGHTNESS
+```
++ = Brighter        - = Dimmer
+```
+
+## SPECIAL COMMANDS
+```
+A = Auto-Cycle      (cycles through effects)
+L = Status          (show current settings)
+G = Custom RGB      (future feature)
+H = Hue Shift       (adjust rainbow speed)
+```
+
+---
+
+## 🎯 POPULAR COMBINATIONS
+
+**GAMING VIBE**
+- Press `X` (Strobe) → `1` (Red) → `Q` (Very Fast)
+
+**CHILL VIBES**
+- Press `E` (Breathing) → `4` (White) → `M` (Very Slow)
+
+**PARTY MODE**
+- Press `A` (Auto-Cycle) → `Q` (Very Fast)
+
+**STATUS CHECK**
+- Press `L` to see everything
+
+---
+
+**All commands are case-insensitive (Press 'r' or 'R' for Rainbow)**
+
+Enjoy! 🎨
