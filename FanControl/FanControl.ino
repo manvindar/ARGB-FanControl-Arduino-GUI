@@ -59,6 +59,8 @@ CRGB leds[NUM_LEDS];
 uint8_t currentBrightness = 255;  // 0-255
 uint8_t currentMode = 0;          // 0-11: effect modes
 CRGB currentColor = CRGB::Red;
+bool useMultiColor = false;       // Global rainbow color source toggle
+uint8_t globalHue = 0;            // Shared hue for all multi-color effects
 uint8_t effectSpeed = 10;         // general speed/wait (lower = faster)
 uint8_t effectIntensity = 128;    // effect intensity/variation (0-255)
 uint8_t colorSaturation = 255;    // color saturation (0-255, lower = more grayish)
@@ -113,7 +115,8 @@ void displayStatus();
 void displayLedSettings();
 void displayPinInfo();
 void clearAllLeds();
-void applyLedReversal(CRGB arr[]);
+void reverseLeds();
+CRGB getPixelColor(int index);
 
 void setup() {
     delay(2000); // 2 second safety delay for power-up
@@ -128,9 +131,9 @@ void setup() {
     Serial.println(F("========================================"));
     displayPinInfo();
     displayStatus();
-    Serial.println(F("--- COLOR PRESETS (1-0) ---"));
+    Serial.println(F("--- COLOR PRESETS (1-0, J) ---"));
     Serial.println(F("1=Red, 2=Green, 3=Blue, 4=White, 5=Cyan"));
-    Serial.println(F("6=Magenta, 7=Yellow, 8=Orange, 9=Pink, 0=Purple"));
+    Serial.println(F("6=Magenta, 7=Yellow, 8=Orange, 9=Pink, 0=Purple, J=Multi"));
     Serial.println(F("\n--- EFFECTS ---"));
     Serial.println(F("R=Rainbow, P=Pulse, S=Static, W=Wipe, T=Theater"));
     Serial.println(F("K=Sparkle, N=Sinelon, B=BPM, C=Confetti, F=Fire"));
@@ -151,6 +154,15 @@ void setup() {
 }
 
 void loop() {
+    // Update global hue counter for multi-color effects
+    static uint16_t hueCounter = 0;
+    static unsigned long lastHueUpdate = 0;
+    if (millis() - lastHueUpdate >= 20) {
+        lastHueUpdate = millis();
+        hueCounter += hueRotationSpeed;
+        globalHue = (hueCounter & 0xFF);
+    }
+
     // Handle serial input for color/mode changes
     if (Serial.available()) {
         String input = Serial.readStringUntil('\n');
@@ -174,6 +186,7 @@ void loop() {
                         g = payload.substring(idx1 + 1, idx2).toInt();
                         b = payload.substring(idx2 + 1).toInt();
                         currentColor = CRGB(constrain(r, 0, 255), constrain(g, 0, 255), constrain(b, 0, 255));
+                        useMultiColor = false; // Disable multi-color when selecting specific RGB
                         currentMode = 2; // static
                         Serial.print(F(">> Custom RGB: "));
                         Serial.print(r);
@@ -337,51 +350,61 @@ void handleSerialCommand(char cmd) {
         // ===== COLOR SELECTION (1-0) =====
         case '1':
             currentColor = colorPresets[0];
+            useMultiColor = false;
             currentMode = 2;
             Serial.println(F(">> Red"));
             break;
         case '2':
             currentColor = colorPresets[1];
+            useMultiColor = false;
             currentMode = 2;
             Serial.println(F(">> Green"));
             break;
         case '3':
             currentColor = colorPresets[2];
+            useMultiColor = false;
             currentMode = 2;
             Serial.println(F(">> Blue"));
             break;
         case '4':
             currentColor = colorPresets[3];
+            useMultiColor = false;
             currentMode = 2;
             Serial.println(F(">> White"));
             break;
         case '5':
             currentColor = colorPresets[4];
+            useMultiColor = false;
             currentMode = 2;
             Serial.println(F(">> Cyan"));
             break;
         case '6':
             currentColor = colorPresets[5];
+            useMultiColor = false;
             currentMode = 2;
             Serial.println(F(">> Magenta"));
             break;
         case '7':
             currentColor = colorPresets[6];
+            useMultiColor = false;
             currentMode = 2;
             Serial.println(F(">> Yellow"));
             break;
         case '8':
             currentColor = colorPresets[7];
+            useMultiColor = false;
             currentMode = 2;
             Serial.println(F(">> Orange"));
             break;
         case '9':
             currentColor = colorPresets[8];
+            useMultiColor = false;
             currentMode = 2;
             Serial.println(F(">> Pink"));
             break;
         case '0':
             currentColor = colorPresets[9];
+            useMultiColor = false;
             currentMode = 2;
             Serial.println(F(">> Purple"));
             break;
@@ -455,8 +478,9 @@ void handleSerialCommand(char cmd) {
             break;
         case 'J':
         case 'j':
-            currentMode = 13;
-            Serial.println(F(">> Multi-Color"));
+            useMultiColor = true;
+            currentMode = 13; // Set to multicolor effect, but now it acts as a global toggle too
+            Serial.println(F(">> Color: Multi-Rainbow"));
             break;
         
         // ===== BRIGHTNESS CONTROL =====
@@ -709,197 +733,205 @@ void pulseEffect(uint8_t wait) {
     FastLED.setBrightness(currentBrightness);  // Restore original brightness
 }
 
-// Fill LEDs one by one with the current color
+// Fill LEDs one by one with the current color (Non-blocking)
 void colorWipe(uint8_t wait) {
-    for(int i = 0; i < NUM_LEDS; i++) {
-        leds[i] = currentColor;
+    static unsigned long lastUpdate = 0;
+    static int currentLed = 0;
+    static bool state = true; // true = filling, false = clearing
+    
+    if (millis() - lastUpdate >= wait) {
+        lastUpdate = millis();
+        
+        if (state) {
+            leds[currentLed] = getPixelColor(currentLed);
+        } else {
+            leds[currentLed] = CRGB::Black;
+        }
+        
+        currentLed++;
+        if (currentLed >= NUM_LEDS) {
+            currentLed = 0;
+            state = !state;
+        }
+        
+        reverseLeds();
         FastLED.show();
-        delay(wait);
     }
-    delay(50);
 }
 
-// Classic theater chase (moving dots)
+// Classic theater chase (moving dots) - Non-blocking
 void theaterChase(uint8_t wait) {
-    for(int q = 0; q < 3; q++) {
+    static unsigned long lastUpdate = 0;
+    static int q = 0;
+    
+    if (millis() - lastUpdate >= wait) {
+        lastUpdate = millis();
+        
+        fill_solid(leds, NUM_LEDS, CRGB::Black);
         for(int i = 0; i < NUM_LEDS; i += 3) {
-            leds[(i + q) % NUM_LEDS] = currentColor;
+            int pos = (i + q) % NUM_LEDS;
+            leds[pos] = getPixelColor(pos);
         }
+        
+        q = (q + 1) % 3;
+        
+        reverseLeds();
         FastLED.show();
-        delay(wait);
-        // clear the LEDs we lit
-        for(int i = 0; i < NUM_LEDS; i += 3) {
-            leds[(i + q) % NUM_LEDS] = CRGB::Black;
-        }
     }
 }
 
-// Sparkle: randomly light a pixel briefly
+// Sparkle: randomly light a pixel briefly (Non-blocking)
 void sparkle(uint8_t wait) {
-    // small fade
-    for(int i = 0; i < NUM_LEDS; i++) {
-        leds[i].nscale8(250);
+    static unsigned long lastUpdate = 0;
+    
+    // Always fade regardless of timing for smooth trails
+    fadeToBlackBy(leds, NUM_LEDS, 10);
+    
+    if (millis() - lastUpdate >= wait) {
+        lastUpdate = millis();
+        int i = random(NUM_LEDS);
+        leds[i] = getPixelColor(i);
     }
-    int i = random(NUM_LEDS);
-    leds[i] = currentColor;
+    
+    reverseLeds();
     FastLED.show();
-    delay(wait);
 }
 
 void setStaticColor(CRGB color) {
-    fill_solid(leds, NUM_LEDS, color);
-    FastLED.show();
-    delay(100);
+    if (useMultiColor) {
+        multicolorEffect(0); // If multi-color source, just run the rainbow cycle
+    } else {
+        fill_solid(leds, NUM_LEDS, color);
+        reverseLeds();
+        FastLED.show();
+    }
 }
 
 // --- Artistic / Euphoric Effects ---
 
-// Sinelon: a moving dot with fading trails (neon sweep)
+// Sinelon: a moving dot with fading trails
 void sinelon(uint8_t wait) {
-    static uint8_t hue = 0;
+    uint8_t speed = map(wait, 1, 200, 30, 2);
     fadeToBlackBy(leds, NUM_LEDS, 20);
+    int pos = beatsin16(speed, 0, NUM_LEDS - 1);
     
-    uint8_t pos8 = waveDirection ? (255 - beat8(8)) : beat8(8); // 0-255
-    int pos = (pos8 * NUM_LEDS) / 255;
+    if (waveDirection) pos = (NUM_LEDS - 1) - pos;
     
-    if (pos >= 0 && pos < NUM_LEDS) {
-        leds[pos] += CHSV(hue, colorSaturation, 255);
+    leds[pos] += getPixelColor(pos);
+    
+    reverseLeds();
+    FastLED.show();
+}
+
+// BPM: pulse all LEDs by a beat
+void bpmEffect(uint8_t wait) {
+    uint8_t beat = beatsin8(62, 64, 255);
+    uint8_t v = (uint16_t(beat) * currentBrightness) / 255;
+    
+    for (int i = 0; i < NUM_LEDS; i++) {
+        CRGB c = getPixelColor(i);
+        leds[i] = CRGB((c.r * v) / 255, (c.g * v) / 255, (c.b * v) / 255);
     }
     
     reverseLeds();
-    
     FastLED.show();
-    hue += 4;
-    delay(wait);
 }
 
-// BPM: pulse all LEDs by a beat, coloring by currentColor hue
-void bpmEffect(uint8_t wait) {
-    static uint8_t hue = 0;
-    uint8_t beat = beatsin8(62, 64, 255); // tempo-ish
-    CRGB c = currentColor;
-    uint8_t v = beat;
-    for(int i = 0; i < NUM_LEDS; i++) {
-        leds[i] = CRGB((c.r * v) / 255, (c.g * v) / 255, (c.b * v) / 255);
-    }
-    FastLED.show();
-    hue += 1;
-    delay(wait);
-}
-
-// Confetti: random colored speckles that fade
+// Confetti: random colored speckles
 void confetti(uint8_t wait) {
+    static unsigned long lastUpdate = 0;
     fadeToBlackBy(leds, NUM_LEDS, 10);
-    int pos = random(NUM_LEDS);
-    leds[pos] += currentColor;
+    
+    if (millis() - lastUpdate >= wait) {
+        lastUpdate = millis();
+        int pos = random(NUM_LEDS);
+        leds[pos] += getPixelColor(pos);
+        leds[pos].maximizeBrightness();
+    }
+    
+    reverseLeds();
     FastLED.show();
-    delay(wait);
 }
 
-// Simple Fire effect (FastLED Fire2012-like)
+// Simple Fire effect
 void fireEffect(uint8_t wait) {
+    static unsigned long lastUpdate = 0;
+    if (millis() - lastUpdate < wait) return;
+    lastUpdate = millis();
+
     static uint8_t heat[NUM_LEDS];
-    // Step 1. Cool down every cell a little
     for (int i = 0; i < NUM_LEDS; i++) {
-        heat[i] = qsub8(heat[i], random8(0, ((20 * 10) / NUM_LEDS) + 2));
+        heat[i] = qsub8(heat[i], random8(0, ((55 * 10) / NUM_LEDS) + 2));
     }
-    // Step 2. Heat from each cell drifts 'up' and diffuses
     for (int k = NUM_LEDS - 1; k >= 2; k--) {
         heat[k] = (heat[k - 1] + heat[k - 2] + heat[k - 2]) / 3;
     }
-    // Step 3. Randomly ignite new 'sparks' near the bottom
     if (random8() < 120) {
-        int y = random8(7);
+        int y = random8(min(NUM_LEDS, 7));
         heat[y] = qadd8(heat[y], random8(160, 255));
     }
-    // Step 4. Map heat to color
     for (int j = 0; j < NUM_LEDS; j++) {
-        uint8_t colorindex = scale8(heat[j], 240);
-        leds[j] = HeatColor(colorindex);
+        leds[j] = HeatColor(scale8(heat[j], 240));
     }
+    
+    reverseLeds();
     FastLED.show();
-    delay(wait);
 }
 
-// ===== NEW EFFECTS =====
-
-// Strobe effect: rapid on/off flashing with current color
+// Strobe effect: rapid on/off
 void strobeEffect(uint8_t wait) {
-    static uint8_t strobePhase = 0;
-    strobePhase++;
+    static unsigned long lastUpdate = 0;
+    static bool isOn = false;
     
-    // Use effectIntensity to control flash duration
-    uint8_t flashThreshold = effectIntensity / 128;  // 0-2
+    uint16_t offTime = wait * 2;
+    uint16_t onTime = max(10, (int)(offTime * effectIntensity / 255));
     
-    if (strobePhase % 4 < flashThreshold) {
-        fill_solid(leds, NUM_LEDS, currentColor);
-        FastLED.setBrightness(currentBrightness);
-    } else {
-        fill_solid(leds, NUM_LEDS, CRGB::Black);
+    if (millis() - lastUpdate >= (isOn ? onTime : offTime)) {
+        lastUpdate = millis();
+        isOn = !isOn;
+        
+        if (isOn) {
+            for (int i = 0; i < NUM_LEDS; i++) leds[i] = getPixelColor(i);
+        } else {
+            fill_solid(leds, NUM_LEDS, CRGB::Black);
+        }
+        
+        reverseLeds();
+        FastLED.show();
     }
-    
-    if (ledReverse) {
-        fl::reverse(leds, leds + NUM_LEDS);
-    }
-    
-    FastLED.show();
-    delay(max(1, wait / 2)); // Faster flash rate for strobe
 }
 
-// Breathing effect: smooth fade in and out (simulates breathing)
+// Breathing effect: smooth fade
 void breathingEffect(uint8_t wait) {
-    static uint8_t breath = 0;
-    static int8_t breathDirection = 3;
+    static float breathPhase = 0;
+    float speed = map(wait, 1, 200, 10, 1) * 0.05;
+    breathPhase += speed;
     
-    breath += breathDirection;
+    float val = (exp(sin(breathPhase)) - 0.36787944) * 108.0; // smooth breathing curve
+    uint8_t bright = (val * currentBrightness) / 255;
     
-    // Apply fade curve
-    uint8_t fadedBreath = (breath * fadeCurve) / 255;
+    for (int i = 0; i < NUM_LEDS; i++) leds[i] = getPixelColor(i);
     
-    if (breath >= 255 || breath <= 0) {
-        breathDirection = -breathDirection;
-    }
-    
-    // Use breathing intensity to modulate brightness
-    fill_solid(leds, NUM_LEDS, currentColor);
-    uint8_t breathBright = (fadedBreath * currentBrightness) / 255;
-    FastLED.setBrightness(breathBright);
+    FastLED.setBrightness(bright);
+    reverseLeds();
     FastLED.show();
-    delay(wait);
-    FastLED.setBrightness(currentBrightness); // Restore brightness
+    FastLED.setBrightness(currentBrightness);
 }
 
-// Tipsy effect: LED wobble whose frequency follows effectSpeed to simulate 'tipsy' sync with fan
+// Tipsy effect: sync with fan speed
 void tipsyEffect(uint8_t wait) {
-    static uint16_t phase = 0;
-    phase++;
-
-    // Map effectSpeed (1-200 ms) to a beat frequency (higher speed -> faster wobble)
-    // Invert mapping: small effectSpeed => fast wobble
-    uint8_t bpm = map(effectSpeed, 1, 200, 220, 8); // range 220..8
-
-    // Apply tipsy sync scaling factor (tipsySyncScale centered at 128)
-    // Higher tipsySyncScale -> faster wobble (scale multiplier)
+    uint8_t bpm = map(effectSpeed, 1, 200, 220, 8); 
     bpm = max(1, (bpm * tipsySyncScale) / 128);
 
-    // Use beatsin8 to produce smooth oscillation and add some random jitter
     uint8_t osc = beatsin8(bpm, 0, 255);
-    uint8_t jitter = random8(0, effectIntensity / 2 + 1);
-
     for (int i = 0; i < NUM_LEDS; i++) {
-        // Slight phase offset per LED to make the wobble travel
-        uint8_t local = beatsin8(bpm + (i * 4), 0, 255);
-        uint8_t val = qadd8((uint8_t)((local + osc) / 2), jitter);
-
-        // Scale currentColor by val
-        leds[i].r = (currentColor.r * val) / 255;
-        leds[i].g = (currentColor.g * val) / 255;
-        leds[i].b = (currentColor.b * val) / 255;
+        uint8_t local = beatsin8(bpm + (i * 8), 0, 255);
+        uint8_t val = (local + osc) / 2;
+        leds[i] = getPixelColor(i);
+        leds[i].nscale8_video(val);
     }
 
-    // occasional wobble shift
-    if (random8() < 10) {
-        // rotate colors a bit
+    if (random8() < 20) {
         CRGB temp = leds[0];
         for (int i = 0; i < NUM_LEDS - 1; i++) leds[i] = leds[i + 1];
         leds[NUM_LEDS - 1] = temp;
@@ -907,128 +939,53 @@ void tipsyEffect(uint8_t wait) {
 
     reverseLeds();
     FastLED.show();
-    // adjust delay proportional to effectSpeed for smoother sync
-    delay(max(1, effectSpeed / 2));
 }
 
-// Multi-color effect: cycles multiple hues across the strip
+// Multi-color effect
 void multicolorEffect(uint8_t wait) {
-    static uint8_t baseHue = 0;
-    baseHue += hueRotationSpeed; // use hue rotation speed to shift palette
-
     for (int i = 0; i < NUM_LEDS; i++) {
-        // Spread hues evenly across LEDs
-        uint8_t h = baseHue + (i * (255 / max(1, NUM_LEDS)));
-        uint8_t sat = colorSaturation;
-        uint8_t val = 255;
-        leds[i] = CHSV(h, sat, val);
+        leds[i] = CHSV(globalHue + (i * (255 / NUM_LEDS)), colorSaturation, 255);
     }
-
     reverseLeds();
     FastLED.show();
-    delay(wait);
+    if (wait > 0) delay(wait);
 }
 
 // ===== UTILITY FUNCTIONS =====
 
-// Display current system status
 void displayStatus() {
     Serial.println(F("\n========== STATUS =========="));
-    Serial.print(F("Brightness: "));
-    Serial.println(currentBrightness);
-    Serial.print(F("Speed: "));
-    Serial.println(effectSpeed);
     Serial.print(F("Mode: "));
-    
-    switch(currentMode) {
-        case 0: Serial.println(F("Rainbow")); break;
-        case 1: Serial.println(F("Pulse")); break;
-        case 2: Serial.println(F("Static")); break;
-        case 3: Serial.println(F("Wipe")); break;
-        case 4: Serial.println(F("Theater")); break;
-        case 5: Serial.println(F("Sparkle")); break;
-        case 6: Serial.println(F("Sinelon")); break;
-        case 7: Serial.println(F("BPM")); break;
-        case 8: Serial.println(F("Confetti")); break;
-        case 9: Serial.println(F("Fire")); break;
-        case 10: Serial.println(F("Strobe")); break;
-        case 11: Serial.println(F("Breathing")); break;
-        case 12: Serial.println(F("Tipsy")); break;
-        case 13: Serial.println(F("Multi-Color")); break;
-        default: Serial.println(F("?")); break;
+    const char* modeNames[] = {"Rainbow","Pulse","Static","Wipe","Theater","Sparkle","Sinelon","BPM","Confetti","Fire","Strobe","Breathing","Tipsy","Multi-Color"};
+    if(currentMode < 14) Serial.println(modeNames[currentMode]);
+    else Serial.println(F("?"));
+    if (useMultiColor) {
+        Serial.println(F("Color: Multi-Rainbow"));
+    } else {
+        Serial.print(F("RGB(")); Serial.print(currentColor.r); Serial.print(","); Serial.print(currentColor.g); Serial.print(","); Serial.print(currentColor.b); Serial.println(")");
     }
-    
-    Serial.print(F("RGB("));
-    Serial.print(currentColor.r);
-    Serial.print(F(","));
-    Serial.print(currentColor.g);
-    Serial.print(F(","));
-    Serial.print(currentColor.b);
-    Serial.println(F(")"));
-    
-    Serial.print(F("Auto: "));
-    Serial.println(autoCycleMode ? F("ON") : F("OFF"));
     Serial.println(F("=========================\n"));
 }
 
-// Display pin and configuration information
 void displayPinInfo() {
     Serial.println(F("\n========== PIN INFO =========="));
-    Serial.print(F("LED Data Pin: "));
-    Serial.println(LED_PIN);
-    Serial.print(F("Number of LEDs: "));
-    Serial.println(NUM_LEDS);
-    Serial.print(F("LED Type: "));
-    Serial.println(F("WS2812B (NeoPixel)"));
-    Serial.print(F("Color Order: "));
-    Serial.println(F("GRB"));
-    Serial.println(F("\n--- TO CHANGE PIN ---"));
-    Serial.println(F("1. Edit FanControl.ino"));
-    Serial.println(F("2. Find: #define LED_PIN  6"));
-    Serial.println(F("3. Change 6 to your pin (0-13)"));
-    Serial.println(F("4. Recompile and upload"));
+    Serial.print(F("LED Data Pin: ")); Serial.println(LED_PIN);
+    Serial.print(F("Number of LEDs: ")); Serial.println(NUM_LEDS);
     Serial.println(F("==============================\n"));
 }
 
-// Display LED-specific customization settings
 void displayLedSettings() {
     Serial.println(F("\n=== LED SETTINGS ==="));
-    Serial.print(F("LED Reverse: "));
-    Serial.println(ledReverse ? F("ON") : F("OFF"));
-    Serial.print(F("LED Mirror: "));
-    Serial.println(ledMirror ? F("ON") : F("OFF"));
-    Serial.print(F("Wave Dir: "));
-    Serial.println(waveDirection ? F("Right") : F("Left"));
-    Serial.print(F("Rainbow Mode: "));
-    switch(rainbowMode) {
-        case 0: Serial.println(F("Wavelength")); break;
-        case 1: Serial.println(F("Hue-Only")); break;
-        case 2: Serial.println(F("Pastel")); break;
-        case 3: Serial.println(F("Saturated")); break;
-    }
-    Serial.print(F("Fade Curve: "));
-    Serial.println(fadeCurve);
+    Serial.print(F("Reverse: ")); Serial.println(ledReverse ? "ON" : "OFF");
+    Serial.print(F("Mirror: ")); Serial.println(ledMirror ? "ON" : "OFF");
     Serial.println(F("==================\n"));
 }
 
-// Clear all LEDs
 void clearAllLeds() {
     fill_solid(leds, NUM_LEDS, CRGB::Black);
     FastLED.show();
 }
 
-// Apply LED reversal if enabled
-void applyLedReversal(CRGB arr[]) {
-    if (ledReverse) {
-        for (int i = 0; i < NUM_LEDS / 2; i++) {
-            CRGB temp = arr[i];
-            arr[i] = arr[NUM_LEDS - 1 - i];
-            arr[NUM_LEDS - 1 - i] = temp;
-        }
-    }
-}
-
-// Helper function to reverse LED array in place
 void reverseLeds() {
     if (ledReverse) {
         for (int i = 0; i < NUM_LEDS / 2; i++) {
@@ -1037,4 +994,13 @@ void reverseLeds() {
             leds[NUM_LEDS - 1 - i] = temp;
         }
     }
+}
+
+// Helper: Get the intended color for a pixel based on settings
+CRGB getPixelColor(int index) {
+    if (useMultiColor) {
+        // Return a color from the global rainbow palette
+        return CHSV(globalHue + (index * (255 / NUM_LEDS)), colorSaturation, 255);
+    }
+    return currentColor;
 }
